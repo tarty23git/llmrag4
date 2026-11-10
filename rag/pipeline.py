@@ -10,7 +10,7 @@ from typing import Any
 import anthropic
 
 from rag.chunking import chunk_text
-from rag.config import Settings
+from rag.config import Settings, save_env_var
 from rag.embeddings import Embedder, load_embedder
 from rag.llm import ClaudeAnswerer, build_messages
 from rag.loaders import extract_text, iter_files
@@ -33,9 +33,19 @@ def _source_payload(results: list[SearchResult]) -> list[dict]:
     ]
 
 
+MISSING_KEY_MESSAGE = (
+    "No Anthropic API key is configured. Click \"API key\" in the web app "
+    "(or run `python -m rag.cli set-key`) and paste your key from console.anthropic.com."
+)
+INVALID_KEY_MESSAGE = (
+    "Anthropic rejected the API key. Click \"API key\" in the web app "
+    "(or run `python -m rag.cli set-key`) to enter a valid key."
+)
+
+
 def _api_error_message(exc: Exception) -> str:
     if isinstance(exc, anthropic.AuthenticationError):
-        return "Anthropic authentication failed. Set ANTHROPIC_API_KEY (see .env.example)."
+        return INVALID_KEY_MESSAGE
     if isinstance(exc, anthropic.RateLimitError):
         return "Rate limited by the Anthropic API. Please retry shortly."
     if isinstance(exc, anthropic.BadRequestError):
@@ -45,7 +55,7 @@ def _api_error_message(exc: Exception) -> str:
     if isinstance(exc, anthropic.APIConnectionError):
         return "Could not reach the Anthropic API. Check your network connection."
     if isinstance(exc, TypeError) and "api_key" in str(exc).lower():
-        return "No Anthropic credentials found. Set ANTHROPIC_API_KEY (see .env.example)."
+        return MISSING_KEY_MESSAGE
     return f"Unexpected error: {exc}"
 
 
@@ -82,6 +92,24 @@ class RAGPipeline:
                 results.append({"source": str(f), "error": str(exc)})
         return results
 
+    # ---------- credentials ----------
+    @property
+    def has_api_key(self) -> bool:
+        return self.answerer.has_credentials
+
+    def set_api_key(self, api_key: str, validate: bool = True, persist: bool = True) -> None:
+        """Validate and start using a new Anthropic API key; optionally save it to .env."""
+        api_key = api_key.strip()
+        if not api_key or any(c.isspace() for c in api_key):
+            raise ValueError("That doesn't look like an API key.")
+        self.answerer.set_api_key(api_key, validate=validate)
+        if persist:
+            save_env_var("ANTHROPIC_API_KEY", api_key)
+        else:
+            import os
+
+            os.environ["ANTHROPIC_API_KEY"] = api_key
+
     # ---------- retrieval + generation ----------
     def retrieve(self, question: str, history: list[dict] | None = None) -> list[SearchResult]:
         # For follow-ups ("what about the second one?") include the previous user turn in the search.
@@ -94,12 +122,16 @@ class RAGPipeline:
         history = history or []
         results = self.retrieve(question, history)
         yield {"type": "sources", "sources": _source_payload(results)}
+        if not self.answerer.has_credentials:
+            yield {"type": "error", "code": "missing_api_key", "message": MISSING_KEY_MESSAGE}
+            return
         try:
             yield from self.answerer.stream(build_messages(question, results, history))
         except Exception as exc:
             log.warning("Answer generation failed: %s", exc)
             log.debug("Answer generation traceback", exc_info=True)
-            yield {"type": "error", "message": _api_error_message(exc)}
+            code = "invalid_api_key" if isinstance(exc, anthropic.AuthenticationError) else "api_error"
+            yield {"type": "error", "code": code, "message": _api_error_message(exc)}
 
     def ask(self, question: str, history: list[dict] | None = None) -> dict[str, Any]:
         answer, sources, final = [], [], {}

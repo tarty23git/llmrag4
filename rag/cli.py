@@ -54,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("delete", help="Remove a document by id")
     p.add_argument("doc_id")
     sub.add_parser("clear", help="Remove all documents from the index")
+    sub.add_parser("set-key", help="Enter, validate and save your Anthropic API key to .env")
     p = sub.add_parser("serve", help="Run the web app")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
@@ -69,6 +70,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     rag = _pipeline()
+    if args.cmd in ("ask", "chat") and not rag.has_api_key:
+        if sys.stdin.isatty():
+            print("No Anthropic API key is configured.")
+            if main(["set-key"]) != 0:
+                return 1
+            rag = _pipeline()
+        else:
+            from rag.pipeline import MISSING_KEY_MESSAGE
+
+            print(f"Error: {MISSING_KEY_MESSAGE}", file=sys.stderr)
+            return 1
     if args.cmd == "ingest":
         for r in rag.ingest_paths(args.paths):
             if "error" in r:
@@ -110,6 +122,24 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "delete":
         removed = rag.store.delete_document(args.doc_id)
         print(f"Removed {removed} chunks." if removed else "No such document.")
+    elif args.cmd == "set-key":
+        import getpass
+
+        import anthropic
+
+        key = getpass.getpass("Anthropic API key (input hidden): ")
+        try:
+            rag.set_api_key(key)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        except anthropic.AuthenticationError:
+            print("Error: Anthropic rejected this key.", file=sys.stderr)
+            return 1
+        except anthropic.APIError as exc:
+            print(f"Error: could not verify the key ({exc}).", file=sys.stderr)
+            return 1
+        print("API key verified and saved to .env.")
     elif args.cmd == "clear":
         rag.store.clear()
         print("Index cleared.")

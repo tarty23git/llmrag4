@@ -31,8 +31,20 @@ class HashEmbedder:
 class FakeAnswerer:
     """Stands in for ClaudeAnswerer; records the messages it was given."""
 
+    has_credentials = True
+
     def __init__(self, reply="Mars has two moons [1].", stop_reason="end_turn"):
         self.reply, self.stop_reason, self.calls = reply, stop_reason, []
+        self.keys = []
+
+    def set_api_key(self, api_key, validate=True):
+        if api_key == "sk-ant-bad-key-123":
+            import anthropic
+            import httpx2
+
+            req = httpx2.Request("GET", "https://api.anthropic.com/v1/models")
+            raise anthropic.AuthenticationError("bad", response=httpx2.Response(401, request=req), body=None)
+        self.keys.append(api_key)
 
     def stream(self, messages):
         self.calls.append(messages)

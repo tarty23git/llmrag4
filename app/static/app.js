@@ -54,6 +54,7 @@ async function refreshStatus() {
   try {
     const h = await (await fetch("/api/health")).json();
     $("status").textContent = `${h.model} · ${h.retrieval}`;
+    $("keyBanner").hidden = !!h.api_key_configured;
   } catch { $("status").textContent = "Server unreachable"; }
 }
 
@@ -165,6 +166,11 @@ async function ask(question) {
         else if (ev.type === "text") { text += ev.text; render(); scrollToBottom(); }
         else if (ev.type === "error") {
           const p = document.createElement("div"); p.className = "notice error"; p.textContent = ev.message; msg.appendChild(p);
+          if (ev.code === "missing_api_key" || ev.code === "invalid_api_key") {
+            const btn = document.createElement("button"); btn.className = "text-btn"; btn.textContent = "Add API key";
+            btn.style.marginTop = "8px"; btn.onclick = openKeyDialog; msg.appendChild(btn);
+            $("keyBanner").hidden = false;
+          }
         } else if (ev.type === "done" && ev.notice) {
           const p = document.createElement("div"); p.className = "notice"; p.textContent = ev.notice; msg.appendChild(p);
         }
@@ -214,6 +220,42 @@ $("newChat").onclick = () => {
 $("toggleSidebar").onclick = (e) => { e.stopPropagation(); $("sidebar").classList.toggle("open"); };
 // On narrow screens the drawer covers the toggle; tapping the chat area closes it.
 document.querySelector(".chat").addEventListener("click", () => $("sidebar").classList.remove("open"));
+
+// ---------- API key ----------
+function openKeyDialog() {
+  $("keyMsg").textContent = ""; $("keyMsg").className = "key-msg";
+  $("keyInput").value = "";
+  $("keyDialog").showModal();
+  $("keyInput").focus();
+}
+$("keyBtn").onclick = openKeyDialog;
+$("keyBannerBtn").onclick = openKeyDialog;
+$("keyClose").onclick = () => $("keyDialog").close();
+$("keyForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const key = $("keyInput").value.trim();
+  if (!key) return;
+  const msg = $("keyMsg"), btn = $("keySave");
+  btn.disabled = true; msg.className = "key-msg"; msg.textContent = "Checking the key with Anthropic…";
+  try {
+    const res = await fetch("/api/settings/api-key", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: key }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const d = data.detail;
+      throw new Error(typeof d === "string" ? d : "That doesn't look like a valid key.");
+    }
+    msg.className = "key-msg ok"; msg.textContent = "Key verified and saved. You can ask questions now.";
+    $("keyInput").value = "";
+    refreshStatus();
+    setTimeout(() => { $("keyDialog").close(); questionEl.focus(); }, 900);
+  } catch (err) {
+    msg.className = "key-msg err"; msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 refreshStatus();
 refreshDocs();

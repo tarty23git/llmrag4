@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+
+import anthropic
 from functools import lru_cache
 from pathlib import Path
 
@@ -36,6 +38,10 @@ class ChatRequest(BaseModel):
     history: list[Turn] = Field(default_factory=list, max_length=40)
 
 
+class ApiKeyRequest(BaseModel):
+    api_key: str = Field(min_length=8, max_length=500)
+
+
 class TextDoc(BaseModel):
     source: str = Field(min_length=1, max_length=300)
     text: str = Field(min_length=1)
@@ -52,7 +58,26 @@ def create_app() -> FastAPI:
             "retrieval": rag.store.mode,
             "documents": len(rag.store.documents()),
             "chunks": len(rag.store.chunks),
+            "api_key_configured": rag.has_api_key,
         }
+
+    @app.post("/api/settings/api-key")
+    def set_api_key(req: ApiKeyRequest, rag: RAGPipeline = Depends(get_pipeline)):
+        """Validate the key with Anthropic, then use it immediately and save it to .env.
+        The key is never echoed back by any endpoint."""
+        try:
+            rag.set_api_key(req.api_key)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        except anthropic.AuthenticationError:
+            raise HTTPException(400, "Anthropic rejected this key. Check that you copied the whole key.")
+        except anthropic.PermissionDeniedError:
+            raise HTTPException(400, "This key is valid but lacks permission to use the API.")
+        except anthropic.APIConnectionError:
+            raise HTTPException(502, "Could not reach api.anthropic.com to check the key. Check your network.")
+        except anthropic.APIStatusError as exc:
+            raise HTTPException(502, f"Anthropic API error while checking the key ({exc.status_code}).")
+        return {"api_key_configured": True}
 
     @app.get("/api/documents")
     def list_documents(rag: RAGPipeline = Depends(get_pipeline)):

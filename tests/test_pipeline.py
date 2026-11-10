@@ -67,6 +67,8 @@ def test_claude_answerer_request_shape(fake_stream_client):
 
 def test_api_errors_become_error_events(settings):
     class Boom:
+        has_credentials = True
+
         def stream(self, messages):
             req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
             raise anthropic.AuthenticationError("bad key", response=httpx2.Response(401, request=req), body=None)
@@ -75,4 +77,31 @@ def test_api_errors_become_error_events(settings):
     rag = RAGPipeline(settings, embedder=None, answerer=Boom())
     events = list(rag.ask_stream("hello"))
     assert events[-1]["type"] == "error"
-    assert "ANTHROPIC_API_KEY" in events[-1]["message"]
+    assert events[-1]["code"] == "invalid_api_key"
+    assert "API key" in events[-1]["message"]
+
+
+def test_missing_key_short_circuits_before_calling_claude(settings, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    rag = RAGPipeline(settings, embedder=None, answerer=ClaudeAnswerer("claude-opus-5-5"))
+    assert not rag.has_api_key
+    events = list(rag.ask_stream("hello"))
+    assert [e["type"] for e in events] == ["sources", "error"]
+    assert events[-1]["code"] == "missing_api_key"
+
+
+def test_set_api_key_persists_to_dotenv(settings, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    (tmp_path / ".env").write_text("RAG_TOP_K=4\nANTHROPIC_API_KEY=old\n")
+    rag = RAGPipeline(settings, embedder=None, answerer=ClaudeAnswerer("claude-opus-5-5"))
+    rag.set_api_key("  sk-ant-new-key-456 ", validate=False)
+    assert (tmp_path / ".env").read_text() == "RAG_TOP_K=4\nANTHROPIC_API_KEY=sk-ant-new-key-456\n"
+    assert oct((tmp_path / ".env").stat().st_mode & 0o777) == "0o600"
+    assert rag.has_api_key
+    try:
+        rag.set_api_key("has space", validate=False)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass

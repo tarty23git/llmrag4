@@ -13,8 +13,12 @@ A retrieval-augmented generation (RAG) app: index your own documents, ask questi
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env    # then set ANTHROPIC_API_KEY in .env
 ```
+
+**API key:** you can add your Anthropic key in any of three ways. Each one is saved to `.env`, which git ignores.
+- In the web app: click **API key** (or the banner shown when no key is set) and paste it. The app checks it with Anthropic before saving and starts using it right away, with no restart.
+- From the CLI: run `python -m rag.cli set-key` (input is hidden). `ask` and `chat` also prompt for a key when none is set.
+- By hand: copy `.env.example` to `.env` and set `ANTHROPIC_API_KEY`.
 
 Index the sample documents and ask a question:
 
@@ -40,13 +44,15 @@ python -m rag.cli serve
 | `chat` | Interactive multi-turn chat. |
 | `search "QUERY" [-k N]` | Show the retrieved chunks without calling Claude, for checking retrieval quality. |
 | `list` / `delete DOC_ID` / `clear` | Manage the index. |
+| `set-key` | Enter, verify and save your Anthropic API key. |
 | `serve [--host --port --reload]` | Start the web server. |
 
 ## HTTP API
 
 | Method & path | Description |
 |---|---|
-| `GET /api/health` | Model, retrieval mode, document and chunk counts. |
+| `GET /api/health` | Model, retrieval mode, document and chunk counts, and whether an API key is configured. |
+| `POST /api/settings/api-key` | `{"api_key": "..."}`: verifies the key with Anthropic, then uses and saves it. The key is never returned by any endpoint. The server listens on 127.0.0.1 by default; if you expose it on a network, anyone who can reach it can change the key. |
 | `GET /api/documents` | List indexed documents. |
 | `POST /api/documents` | Upload files (multipart field `files`, repeatable). |
 | `POST /api/documents/text` | Index raw text: `{"source": "...", "text": "..."}`. |

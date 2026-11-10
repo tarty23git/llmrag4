@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from typing import Any
 
@@ -58,6 +59,21 @@ class ClaudeAnswerer:
         if self._client is None:
             self._client = anthropic.Anthropic()  # ANTHROPIC_API_KEY / auth profile from env
         return self._client
+
+    @property
+    def has_credentials(self) -> bool:
+        """True if a client was injected or credentials are present in the environment."""
+        if self._client is not None:
+            return True
+        return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+    def set_api_key(self, api_key: str, validate: bool = True) -> None:
+        """Switch to a new API key. With validate=True, makes a cheap authenticated call first
+        (raises anthropic.AuthenticationError / APIConnectionError on failure)."""
+        client = anthropic.Anthropic(api_key=api_key)
+        if validate:
+            client.models.list(limit=1)
+        self._client = client
 
     def _request_kwargs(self, messages: list[dict]) -> dict:
         kwargs: dict[str, Any] = dict(

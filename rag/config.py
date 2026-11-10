@@ -43,3 +43,16 @@ class Settings:
     def from_env(cls) -> "Settings":
         _load_dotenv()
         return cls()
+
+
+def save_env_var(name: str, value: str, path: Path = Path(".env")) -> None:
+    """Set NAME=value in a .env file (created with owner-only permissions), replacing any existing line."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    lines = [ln for ln in lines if not ln.strip().startswith(f"{name}=")]
+    lines.append(f"{name}={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    os.environ[name] = value

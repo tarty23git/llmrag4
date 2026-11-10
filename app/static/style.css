@@ -144,3 +144,27 @@ dialog pre { margin: 0; padding: 16px; white-space: pre-wrap; font: 14px/1.6 sys
   .icon-btn { display: block; }
   .messages, .chat-header, .composer { padding-left: 16px; padding-right: 16px; }
 }
+
+/* API key */
+.key-banner {
+  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--accent-soft); color: var(--text); font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.key-banner[hidden] { display: none; }
+.key-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.key-body p { margin: 0; }
+.key-body a { color: var(--accent); }
+.key-body input {
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: 14px ui-monospace, monospace;
+}
+.key-body input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.key-msg { font-size: 13px; min-height: 18px; }
+.key-msg.err { color: var(--danger); }
+.key-msg.ok { color: #15803d; }
+.key-actions { display: flex; justify-content: flex-end; }
+.key-actions button {
+  border: 0; border-radius: 10px; padding: 9px 16px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+}
+.key-actions button:disabled { opacity: .5; cursor: default; }
