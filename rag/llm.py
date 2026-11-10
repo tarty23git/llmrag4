@@ -50,6 +50,7 @@ def build_messages(question: str, results: list[SearchResult], history: list[dic
 class ClaudeAnswerer:
     def __init__(self, model: str, effort: str = "medium", max_tokens: int = 16000, client: Any | None = None):
         self.model = model
+        self.name = model
         self.effort = effort
         self.max_tokens = max_tokens
         self._client = client

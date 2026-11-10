@@ -57,7 +57,7 @@ def test_chat_validation(client):
 def test_set_api_key_endpoint(client, answerer, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert client.get("/api/health").json()["api_key_configured"] is True  # fake answerer
+    assert client.get("/api/health").json()["api_key_configured"] is False
 
     bad = client.post("/api/settings/api-key", json={"api_key": "sk-ant-bad-key-123"})
     assert bad.status_code == 400 and "rejected" in bad.json()["detail"]

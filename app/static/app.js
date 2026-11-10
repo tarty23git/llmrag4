@@ -6,6 +6,7 @@ const questionEl = $("question");
 const sendBtn = $("send");
 let history = [];      // [{role, content}] sent back to the server for follow-ups
 let busy = false;
+let bannerDismissed = null;
 
 // ---------- minimal, escape-first Markdown renderer ----------
 function escapeHtml(s) {
@@ -53,8 +54,17 @@ function renderMarkdown(src) {
 async function refreshStatus() {
   try {
     const h = await (await fetch("/api/health")).json();
-    $("status").textContent = `${h.model} · ${h.retrieval}`;
-    $("keyBanner").hidden = !!h.api_key_configured;
+    $("status").textContent = `${h.engine} · ${h.retrieval}`;
+    let hint = "";
+    if (h.kind === "extractive") {
+      hint = h.ollama_status && h.ollama_status !== "ready"
+        ? `No AI model found, so answers quote your documents directly. For written answers with no API key: ${h.ollama_status}`
+        : "Answers quote your documents directly.";
+    } else if (h.kind === "ollama" && h.ollama_status !== "ready") {
+      hint = h.ollama_status;
+    }
+    $("keyBannerText").textContent = hint;
+    $("keyBanner").hidden = !hint || bannerDismissed === hint;
   } catch { $("status").textContent = "Server unreachable"; }
 }
 
@@ -167,9 +177,8 @@ async function ask(question) {
         else if (ev.type === "error") {
           const p = document.createElement("div"); p.className = "notice error"; p.textContent = ev.message; msg.appendChild(p);
           if (ev.code === "missing_api_key" || ev.code === "invalid_api_key") {
-            const btn = document.createElement("button"); btn.className = "text-btn"; btn.textContent = "Add API key";
+            const btn = document.createElement("button"); btn.className = "text-btn"; btn.textContent = "Update Claude key";
             btn.style.marginTop = "8px"; btn.onclick = openKeyDialog; msg.appendChild(btn);
-            $("keyBanner").hidden = false;
           }
         } else if (ev.type === "done" && ev.notice) {
           const p = document.createElement("div"); p.className = "notice"; p.textContent = ev.notice; msg.appendChild(p);
@@ -196,6 +205,7 @@ async function ask(question) {
     }
     msg.appendChild(row);
   }
+  refreshStatus();
   if (text) history.push({ role: "user", content: question }, { role: "assistant", content: text });
   history = history.slice(-20);
   scrollToBottom();
@@ -229,7 +239,7 @@ function openKeyDialog() {
   $("keyInput").focus();
 }
 $("keyBtn").onclick = openKeyDialog;
-$("keyBannerBtn").onclick = openKeyDialog;
+$("keyBannerClose").onclick = () => { bannerDismissed = $("keyBannerText").textContent; $("keyBanner").hidden = true; };
 $("keyClose").onclick = () => $("keyDialog").close();
 $("keyForm").onsubmit = async (e) => {
   e.preventDefault();

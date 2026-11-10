@@ -27,6 +27,11 @@ def _env(name: str, default: str) -> str:
 
 @dataclass
 class Settings:
+    # Answer engine: auto (Claude if a key is set, else local Ollama if running, else extractive),
+    # or force one of: claude | ollama | extractive. Only "claude" needs an API key.
+    llm: str = field(default_factory=lambda: _env("RAG_LLM", "auto"))
+    ollama_model: str = field(default_factory=lambda: _env("RAG_OLLAMA_MODEL", "llama3.2"))
+    ollama_url: str = field(default_factory=lambda: _env("RAG_OLLAMA_URL", "http://localhost:11434"))
     model: str = field(default_factory=lambda: _env("RAG_MODEL", "claude-opus-5-5"))
     effort: str = field(default_factory=lambda: _env("RAG_EFFORT", "medium"))
     max_tokens: int = field(default_factory=lambda: int(_env("RAG_MAX_TOKENS", "16000")))

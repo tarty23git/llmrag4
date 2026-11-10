@@ -54,11 +54,10 @@ def create_app() -> FastAPI:
     def health(rag: RAGPipeline = Depends(get_pipeline)):
         return {
             "status": "ok",
-            "model": rag.settings.model,
             "retrieval": rag.store.mode,
             "documents": len(rag.store.documents()),
             "chunks": len(rag.store.chunks),
-            "api_key_configured": rag.has_api_key,
+            **rag.engine_info(),
         }
 
     @app.post("/api/settings/api-key")

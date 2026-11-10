@@ -12,6 +12,7 @@ import anthropic
 from rag.chunking import chunk_text
 from rag.config import Settings, save_env_var
 from rag.embeddings import Embedder, load_embedder
+from rag.answerers import ExtractiveAnswerer, OllamaAnswerer, OllamaError
 from rag.llm import ClaudeAnswerer, build_messages
 from rag.loaders import extract_text, iter_files
 from rag.store import DocumentStore, SearchResult
@@ -34,8 +35,9 @@ def _source_payload(results: list[SearchResult]) -> list[dict]:
 
 
 MISSING_KEY_MESSAGE = (
-    "No Anthropic API key is configured. Click \"API key\" in the web app "
-    "(or run `python -m rag.cli set-key`) and paste your key from console.anthropic.com."
+    "RAG_LLM is set to 'claude' but no Anthropic API key is configured. Add a key "
+    "(\"API key\" in the web app, or `python -m rag.cli set-key`), or set RAG_LLM=auto "
+    "to answer without a key."
 )
 INVALID_KEY_MESSAGE = (
     "Anthropic rejected the API key. Click \"API key\" in the web app "
@@ -52,6 +54,8 @@ def _api_error_message(exc: Exception) -> str:
         return f"The API rejected the request: {exc.message}"
     if isinstance(exc, anthropic.APIStatusError):
         return f"Anthropic API error ({exc.status_code}): {exc.message}"
+    if isinstance(exc, OllamaError):
+        return str(exc)
     if isinstance(exc, anthropic.APIConnectionError):
         return "Could not reach the Anthropic API. Check your network connection."
     if isinstance(exc, TypeError) and "api_key" in str(exc).lower():
@@ -64,14 +68,56 @@ class RAGPipeline:
         self,
         settings: Settings | None = None,
         embedder: Embedder | None | str = "auto",
-        answerer: ClaudeAnswerer | None = None,
+        answerer: Any | None = None,
     ):
         self.settings = settings or Settings.from_env()
         s = self.settings
         if embedder == "auto":
             embedder = load_embedder(s.embeddings, s.embedding_model, cache_dir=str(s.data_dir / "models"))
         self.store = DocumentStore(s.data_dir / "index", embedder)
-        self.answerer = answerer or ClaudeAnswerer(s.model, effort=s.effort, max_tokens=s.max_tokens)
+        mode = s.llm.lower()
+        if mode not in {"auto", "claude", "ollama", "extractive"}:
+            raise ValueError(f"Unknown RAG_LLM {s.llm!r}: use auto, claude, ollama or extractive")
+        self.mode = "fixed" if answerer is not None else mode
+        self._fixed = answerer
+        self.claude = ClaudeAnswerer(s.model, effort=s.effort, max_tokens=s.max_tokens)
+        self.ollama = OllamaAnswerer(s.ollama_model, s.ollama_url)
+        self.extractive = ExtractiveAnswerer()
+
+    @property
+    def answerer(self) -> Any:
+        """The backend that will answer the next question.
+
+        auto: Claude if an API key is set, else a local Ollama model if one is running, else the
+        extractive fallback - so the app always answers, with no key or install required.
+        """
+        if self._fixed is not None:
+            return self._fixed
+        if self.mode == "claude":
+            return self.claude
+        if self.mode == "ollama":
+            return self.ollama
+        if self.mode == "extractive":
+            return self.extractive
+        if self.claude.has_credentials:
+            return self.claude
+        if self.ollama.has_credentials:
+            return self.ollama
+        return self.extractive
+
+    def engine_info(self) -> dict[str, Any]:
+        a = self.answerer
+        info: dict[str, Any] = {
+            "mode": self.mode,
+            "engine": getattr(a, "name", None) or getattr(a, "model", "custom"),
+            "kind": "claude" if a is self.claude else "ollama" if a is self.ollama else
+                    "extractive" if a is self.extractive else "custom",
+            "api_key_configured": self.claude.has_credentials,
+        }
+        if info["kind"] in ("extractive", "ollama") or self.mode == "ollama":
+            info["ollama_status"] = self.ollama.problem() or "ready"
+            info["ollama_model"] = self.ollama.model
+        return info
 
     # ---------- ingestion ----------
     def ingest_text(self, source: str, text: str) -> dict:
@@ -95,14 +141,14 @@ class RAGPipeline:
     # ---------- credentials ----------
     @property
     def has_api_key(self) -> bool:
-        return self.answerer.has_credentials
+        return self.claude.has_credentials
 
     def set_api_key(self, api_key: str, validate: bool = True, persist: bool = True) -> None:
         """Validate and start using a new Anthropic API key; optionally save it to .env."""
         api_key = api_key.strip()
         if not api_key or any(c.isspace() for c in api_key):
             raise ValueError("That doesn't look like an API key.")
-        self.answerer.set_api_key(api_key, validate=validate)
+        (self._fixed or self.claude).set_api_key(api_key, validate=validate)
         if persist:
             save_env_var("ANTHROPIC_API_KEY", api_key)
         else:
@@ -122,11 +168,15 @@ class RAGPipeline:
         history = history or []
         results = self.retrieve(question, history)
         yield {"type": "sources", "sources": _source_payload(results)}
-        if not self.answerer.has_credentials:
-            yield {"type": "error", "code": "missing_api_key", "message": MISSING_KEY_MESSAGE}
+        answerer = self.answerer
+        if not answerer.has_credentials:
+            if answerer is self.ollama:
+                yield {"type": "error", "code": "ollama_unavailable", "message": self.ollama.problem()}
+            else:
+                yield {"type": "error", "code": "missing_api_key", "message": MISSING_KEY_MESSAGE}
             return
         try:
-            yield from self.answerer.stream(build_messages(question, results, history))
+            yield from answerer.stream(build_messages(question, results, history))
         except Exception as exc:
             log.warning("Answer generation failed: %s", exc)
             log.debug("Answer generation traceback", exc_info=True)

@@ -15,6 +15,8 @@ def _pipeline():
 
 def _print_answer_stream(rag, question: str, history: list[dict], show_sources: bool) -> str:
     answer = []
+    if show_sources:
+        print(f"(answer engine: {rag.engine_info()['engine']})")
     for event in rag.ask_stream(question, history):
         if event["type"] == "sources" and show_sources:
             if event["sources"]:
@@ -54,7 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("delete", help="Remove a document by id")
     p.add_argument("doc_id")
     sub.add_parser("clear", help="Remove all documents from the index")
-    sub.add_parser("set-key", help="Enter, validate and save your Anthropic API key to .env")
+    sub.add_parser("set-key", help="Optional: enter, validate and save an Anthropic API key to .env")
+    sub.add_parser("engine", help="Show which answer engine will be used and why")
     p = sub.add_parser("serve", help="Run the web app")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
@@ -70,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     rag = _pipeline()
-    if args.cmd in ("ask", "chat") and not rag.has_api_key:
+    if args.cmd in ("ask", "chat") and rag.mode == "claude" and not rag.has_api_key:
         if sys.stdin.isatty():
             print("No Anthropic API key is configured.")
             if main(["set-key"]) != 0:
@@ -94,7 +97,10 @@ def main(argv: list[str] | None = None) -> int:
         _print_answer_stream(rag, args.question, [], not args.no_sources)
     elif args.cmd == "chat":
         history: list[dict] = []
-        print(f"Chatting over {len(rag.store.documents())} documents. Ctrl-D or 'exit' to quit.\n")
+        print(
+            f"Chatting over {len(rag.store.documents())} documents using {rag.engine_info()['engine']}. "
+            "Ctrl-D or 'exit' to quit.\n"
+        )
         while True:
             try:
                 q = input("you> ").strip()
@@ -122,6 +128,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "delete":
         removed = rag.store.delete_document(args.doc_id)
         print(f"Removed {removed} chunks." if removed else "No such document.")
+    elif args.cmd == "engine":
+        info = rag.engine_info()
+        print(f"Answer engine: {info['engine']}  (RAG_LLM={rag.settings.llm})")
+        print(f"Claude API key: {'configured' if info['api_key_configured'] else 'not set (not required)'}")
+        if "ollama_status" in info:
+            print(f"Ollama ({info['ollama_model']}): {info['ollama_status']}")
     elif args.cmd == "set-key":
         import getpass
 

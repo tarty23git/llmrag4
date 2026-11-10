@@ -32,13 +32,13 @@
     <header class="chat-header">
       <button class="icon-btn" id="toggleSidebar" aria-label="Show documents">☰</button>
       <span>Ask questions about your documents</span>
-      <button class="text-btn" id="keyBtn">API key</button>
+      <button class="text-btn" id="keyBtn" title="Optional: use Claude for answers">Claude key</button>
       <button class="text-btn" id="newChat">New chat</button>
     </header>
 
     <div class="key-banner" id="keyBanner" hidden>
-      <span>Add your Anthropic API key to get answers.</span>
-      <button class="text-btn" id="keyBannerBtn">Add API key</button>
+      <span id="keyBannerText"></span>
+      <button class="text-btn" id="keyBannerClose" aria-label="Dismiss">Dismiss</button>
     </div>
 
     <div class="messages" id="messages">
@@ -64,9 +64,9 @@
 
 <dialog id="keyDialog">
   <form id="keyForm">
-    <header><strong>Anthropic API key</strong><button type="button" id="keyClose" aria-label="Close">✕</button></header>
+    <header><strong>Claude API key (optional)</strong><button type="button" id="keyClose" aria-label="Close">✕</button></header>
     <div class="key-body">
-      <p class="muted">Create a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> and paste it here. It is checked with Anthropic, then saved to this server's <code>.env</code> file. It is never shown again.</p>
+      <p class="muted">The app works without a key, using a local Ollama model or quoting your documents. Add a key only if you want Claude to write the answers. Create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> and paste it here. It is checked with Anthropic, then saved to this server's <code>.env</code> file. It is never shown again.</p>
       <input type="password" id="keyInput" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" required>
       <div id="keyMsg" class="key-msg"></div>
       <div class="key-actions"><button type="submit" id="keySave">Verify &amp; save</button></div>
