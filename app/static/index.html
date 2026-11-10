@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llmrag4</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <h1>llmrag4</h1>
+      <p class="muted" id="status">Loading…</p>
+    </div>
+
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" multiple accept=".txt,.md,.markdown,.rst,.pdf,.html,.htm,.csv,.json">
+      <strong>Add documents</strong>
+      <span class="muted">Drop files or click · PDF, TXT, MD, HTML, CSV, JSON</span>
+    </label>
+    <div id="uploadLog" class="upload-log"></div>
+
+    <div class="doc-header">
+      <h2>Documents</h2>
+      <span class="muted" id="docCount"></span>
+    </div>
+    <ul class="doc-list" id="docList"></ul>
+  </aside>
+
+  <main class="chat">
+    <header class="chat-header">
+      <button class="icon-btn" id="toggleSidebar" aria-label="Show documents">☰</button>
+      <span>Ask questions about your documents</span>
+      <button class="text-btn" id="newChat">New chat</button>
+    </header>
+
+    <div class="messages" id="messages">
+      <div class="empty" id="empty">
+        <h2>What would you like to know?</h2>
+        <p class="muted">Answers are grounded in your indexed documents, with numbered citations you can click to see the source passage.</p>
+      </div>
+    </div>
+
+    <form class="composer" id="composer">
+      <textarea id="question" rows="1" placeholder="Ask a question…" required></textarea>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </main>
+</div>
+
+<dialog id="sourceDialog">
+  <form method="dialog">
+    <header><strong id="sourceTitle"></strong><button aria-label="Close">✕</button></header>
+    <pre id="sourceText"></pre>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
